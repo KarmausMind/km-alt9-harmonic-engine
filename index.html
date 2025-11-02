@@ -58,19 +58,38 @@
       const [titleGlow, setTitleGlow] = useState(0);
       const [brightness, setBrightness] = useState(1.0);
 
-      // Crowd + persistence
+      // ===== Functions for button actions =====
+      const doFire = () => {
+        setFirePulse(1);
+        setCoins((c) => Math.max(0, c - 1));
+        setStatus("FIRING");
+        setStoryFlash(true);
+        if (navigator.vibrate) navigator.vibrate(18);
+        setTimeout(() => setStatus("RESONANT"), 480);
+        setTimeout(() => setStoryFlash(false), 240);
+      };
+
+      const doReset = () => {
+        setCompass({ x: 0, y: 0, z: 0 });
+        setV(0.5);
+        setDrift(0);
+        setMoves(0);
+        setLoopStep(0);
+        setCoins(3);
+        setStatus("RESONANT");
+      };
+
+      // ===== Rest of your existing code =====
       const SESSION_KEY = "alt9.session.v1";
       const [sessionId] = useState(() => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Math.random())));
       const [visitors, setVisitors] = useState(1);
       const [communityTruth, setCommunityTruth] = useState(0);
       const bcRef = useRef(null);
 
-      // ===== Time refs =====
       const tRef = useRef(0);
       const rafRef = useRef(0);
       const last = useRef(0);
 
-      // ===== Derived signals =====
       const pulse = useMemo(() => {
         const t = tRef.current;
         return (Math.sin(t * (Math.PI / PHI)) + 1) / 2;
@@ -85,14 +104,12 @@
 
       const heading = useMemo(() => (moves * PSI_DEG) % 360, [moves]);
 
-      // Fire pulse decay
       useEffect(() => {
         if (firePulse <= 0) return;
         const id = setInterval(() => setFirePulse((p) => Math.max(0, p - 0.05)), 16);
         return () => clearInterval(id);
       }, [firePulse]);
 
-      // Main loop (RAF)
       useEffect(() => {
         let running = true;
         const loop = (ts) => {
@@ -117,15 +134,12 @@
         };
       }, [lotus, truth, v]);
 
-      // Pause on hidden tab + animation reliability (hybrid approach)
       useEffect(() => {
         const onVis = () => {
           if (document.hidden) {
             cancelAnimationFrame(rafRef.current);
           } else {
-            // Simple restart (Claude's approach)
             rafRef.current = requestAnimationFrame(() => setTicks((n) => n + 1));
-            // Heartbeat backup (DeepSeek's reliability)
             setTimeout(() => setTicks((n) => n + 1), 1000);
           }
         };
@@ -133,7 +147,6 @@
         return () => document.removeEventListener("visibilitychange", onVis);
       }, []);
 
-      // Persistence
       useEffect(() => {
         try {
           const raw = localStorage.getItem(SESSION_KEY);
@@ -151,7 +164,6 @@
         try { localStorage.setItem(SESSION_KEY, JSON.stringify(payload)); } catch {}
       }, [v, moves, compass]);
 
-      // BroadcastChannel
       useEffect(() => {
         if (typeof BroadcastChannel === "undefined") return;
         const bc = new BroadcastChannel("alt9");
@@ -186,7 +198,6 @@
         return () => { alive = false; clearInterval(presenceTimer); bc.close(); };
       }, [sessionId, truth]);
 
-      // Controls
       useEffect(() => {
         const onDown = (e) => {
           const k = e.key.toLowerCase();
@@ -206,17 +217,11 @@
             setV((vv) => clamp(vv + ((d.x || 0) + (d.y || 0) + (d.z || 0)) * 0.01, 0, 2));
           }
           if (k === " ") {
-            setFirePulse(1);
-            setCoins((c) => Math.max(0, c - 1));
-            setStatus("FIRING");
-            setStoryFlash(true);
-            if (navigator.vibrate) navigator.vibrate(18);
-            setTimeout(() => setStatus("RESONANT"), 480);
-            setTimeout(() => setStoryFlash(false), 240);
+            doFire();
           }
           if (k === "o") { setPrayHold(true); if (navigator.vibrate) navigator.vibrate([8,30,8]); }
           if (k === "r") {
-            setCompass({ x: 0, y: 0, z: 0 }); setV(0.5); setDrift(0); setMoves(0); setLoopStep(0); setCoins(3); setStatus("RESONANT");
+            doReset();
           }
           if (k === "1") setLotus((b) => !b);
         };
@@ -359,10 +364,12 @@
 
                 <Panel title="CONTROLS">
                   <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                    <KeyHint k="SPACE" label="FIRE" />
-                    <KeyHint k="O" label="Ω PRAY (HOLD)" active={prayHold} />
-                    <KeyHint k="R" label="RESET" />
-                    <KeyHint k="1" label="LOTUS" active={lotus} />
+                    <KeyHint k="SPACE" label="FIRE" onClick={doFire} />
+                    <KeyHint k="O" label="Ω PRAY (HOLD)" active={prayHold} 
+                             onMouseDown={() => setPrayHold(true)} 
+                             onMouseUp={() => setPrayHold(false)} />
+                    <KeyHint k="R" label="RESET" onClick={doReset} />
+                    <KeyHint k="1" label="LOTUS" active={lotus} onClick={() => setLotus(!lotus)} />
                   </div>
                 </Panel>
               </div>
@@ -484,9 +491,14 @@
       );
     }
 
-    function KeyHint({ k, label, active }) {
+    function KeyHint({ k, label, active, onClick, onMouseDown, onMouseUp }) {
       return (
-        <div className={`flex items-center gap-2 px-2 py-2 rounded-md border transition-all duration-200 cursor-pointer hover:scale-105 hover:brightness-125 hover:shadow-lg hover:shadow-cyan-500/25 ${active ? "border-emerald-400 bg-emerald-400/5" : "border-cyan-300/30 bg-white/5"}`}>
+        <div 
+          onClick={onClick}
+          onMouseDown={onMouseDown}
+          onMouseUp={onMouseUp}
+          className={`flex items-center gap-2 px-2 py-2 rounded-md border transition-all duration-200 cursor-pointer hover:scale-105 hover:brightness-125 hover:shadow-lg hover:shadow-cyan-500/25 ${active ? "border-emerald-400 bg-emerald-400/5" : "border-cyan-300/30 bg-white/5"}`}
+        >
           <span className="px-2 py-0.5 rounded bg-black/40 border border-cyan-300/40 text-[10px] text-cyan-100 font-mono">{k}</span>
           <span className="text-[11px] text-cyan-100 font-mono tracking-wide">{label}</span>
         </div>
