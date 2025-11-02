@@ -1,491 +1,559 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>ALT-9 Harmonic Engine</title>
 
-/**
- * KM CAPTURE MODE — TEMPLATE NOTE (keep for all future artifacts)
- * Purpose: produce perfect, edge-to-edge screenshots for X posts without manual CSS edits.
- * How to use:
- * 1) Set `CAPTURE_SCALE` (0.90 = -10% global scale for full-app framing).
- * 2) Optional: set `CAPTURE_BG` to a neutral or OLED-true color.
- * 3) Toggle per session by editing values here (no runtime switch needed yet).
- * Screenshot tips:
- *  - Desktop: zoom 90% in browser if you need an extra 5–10% space.
- *  - Use macOS screenshot (⌘+Shift+4, then Space) to capture the window cleanly.
- */
-const CAPTURE_SCALE = 0.90; // DeepSeek recommendation: -10% size for full-frame capture
-const CAPTURE_BG = "#070B1F"; // OLED-friendly navy used across KM HUDs
+    <!-- Tailwind (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
 
-const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
-const lerp = (a, b, t) => a + (b - a) * t;
+    <!-- React + ReactDOM (UMD) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 
-export default function App() {
-  // ===== Constants (symbolic) =====
-  const PHI = 1.6180339887;
-  const PI_PRIME = 3.1415926536;
-  const OMEGA_0 = 4.7596266423;
-  const PSI_DEG = 137.5;
-  const PRIME_BOUNDARY = 23;
-  const TOL = 1e-11;
+    <!-- Babel (so we can run JSX without a build step) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  // ===== State =====
-  const [coins, setCoins] = useState(3);
-  const [ticks, setTicks] = useState(0);
-  const [moves, setMoves] = useState(0);
-  const [loopStep, setLoopStep] = useState(15);
-  const [v, setV] = useState(0.5);
-  const [drift, setDrift] = useState(0);
-  const [compass, setCompass] = useState({ x: 0, y: 0, z: 0 });
-  const [firePulse, setFirePulse] = useState(0);
-  const [prayHold, setPrayHold] = useState(false);
-  const [lotus, setLotus] = useState(false);
-  const [status, setStatus] = useState("RESONANT");
-  const [storyFlash, setStoryFlash] = useState(false);
-  const [titleGlow, setTitleGlow] = useState(0);
-  const [brightness, setBrightness] = useState(1.0);
-  const [captureMode, setCaptureMode] = useState(true); // CAPTURE MODE toggle (runtime)
+    <style>
+      html, body { height: 100%; margin: 0; background:#070B1F; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
 
-  // ===== Functions for button actions =====
-  const doFire = () => {
-    setFirePulse(1);
-    setCoins((c) => Math.max(0, c - 1));
-    setStatus("FIRING");
-    setStoryFlash(true);
-    if (navigator.vibrate) navigator.vibrate(18);
-    setTimeout(() => setStatus("RESONANT"), 480);
-    setTimeout(() => setStoryFlash(false), 240);
-  };
+    <script type="text/babel">
+      // NOTE: Using React globals from UMD; do not import.
+      const { useState, useEffect, useMemo, useRef } = React;
 
-  const doPray = (hold) => {
-    setPrayHold(hold);
-    if (hold && navigator.vibrate) navigator.vibrate([8, 30, 8]);
-  };
+      /**
+       * KM CAPTURE MODE — TEMPLATE NOTE (keep for all future artifacts)
+       * Purpose: produce perfect, edge-to-edge screenshots for X posts without manual CSS edits.
+       * How to use:
+       * 1) Set `CAPTURE_SCALE` (0.90 = -10% global scale for full-app framing).
+       * 2) Optional: set `CAPTURE_BG` to a neutral or OLED-true color.
+       * 3) Toggle per session by editing values here (no runtime switch needed yet).
+       * Screenshot tips:
+       *  - Desktop: zoom 90% in browser if you need an extra 5–10% space.
+       *  - Use macOS screenshot (⌘+Shift+4, then Space) to capture the window cleanly.
+       */
+      const CAPTURE_SCALE = 0.90; // DeepSeek recommendation: -10% size for full-frame capture
+      const CAPTURE_BG = "#070B1F"; // OLED-friendly navy used across KM HUDs
 
-  const doReset = () => {
-    setCompass({ x: 0, y: 0, z: 0 });
-    setV(0.5);
-    setDrift(0);
-    setMoves(0);
-    setLoopStep(0);
-    setCoins(3);
-    setStatus("RESONANT");
-  };
+      const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+      const lerp = (a, b, t) => a + (b - a) * t;
 
-  // ===== Session / presence (kept from original) =====
-  const SESSION_KEY = "alt9.session.v1";
-  const [sessionId] = useState(() => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Math.random())));
-  const [visitors, setVisitors] = useState(1);
-  const [communityTruth, setCommunityTruth] = useState(0);
-  const bcRef = useRef(null);
+      function App() {
+        // ===== Constants (symbolic) =====
+        const PHI = 1.6180339887;
+        const PI_PRIME = 3.1415926536;
+        const OMEGA_0 = 4.7596266423;
+        const PSI_DEG = 137.5;
+        const PRIME_BOUNDARY = 23;
+        const TOL = 1e-11;
 
-  const tRef = useRef(0);
-  const rafRef = useRef(0);
-  const last = useRef(0);
+        // ===== State =====
+        const [coins, setCoins] = useState(3);
+        const [ticks, setTicks] = useState(0);
+        const [moves, setMoves] = useState(0);
+        const [loopStep, setLoopStep] = useState(15);
+        const [v, setV] = useState(0.5);
+        const [drift, setDrift] = useState(0);
+        const [compass, setCompass] = useState({ x: 0, y: 0, z: 0 });
+        const [firePulse, setFirePulse] = useState(0);
+        const [prayHold, setPrayHold] = useState(false);
+        const [lotus, setLotus] = useState(false);
+        const [status, setStatus] = useState("RESONANT");
+        const [storyFlash, setStoryFlash] = useState(false);
+        const [titleGlow, setTitleGlow] = useState(0);
+        const [brightness, setBrightness] = useState(1.0);
+        const [captureMode, setCaptureMode] = useState(true); // CAPTURE MODE toggle (runtime)
 
-  const pulse = useMemo(() => {
-    const t = tRef.current;
-    return (Math.sin(t * (Math.PI / PHI)) + 1) / 2;
-  }, [ticks]);
-
-  const truth = useMemo(() => {
-    const raw = Math.pow((PHI * v + PI_PRIME) / OMEGA_0, Math.min(PRIME_BOUNDARY, 2));
-    const t = 1 / (1 + Math.exp(-6 * (raw - 1)));
-    const boost = prayHold ? 0.05 : 0;
-    return clamp(lerp(t, 1, boost), 0, 1);
-  }, [v, prayHold, ticks]);
-
-  const heading = useMemo(() => (moves * PSI_DEG) % 360, [moves]);
-
-  useEffect(() => {
-    if (firePulse <= 0) return;
-    const id = setInterval(() => setFirePulse((p) => Math.max(0, p - 0.05)), 16);
-    return () => clearInterval(id);
-  }, [firePulse]);
-
-  useEffect(() => {
-    let running = true;
-    const loop = (ts) => {
-      if (!running) return;
-      if (!last.current) last.current = ts;
-      const dt = (ts - last.current) / 1000;
-      last.current = ts;
-
-      const scale = lotus ? 1.6 : 1.0;
-      tRef.current += dt * (9.11 * scale);
-      setTitleGlow((g) => (g + dt * 0.35) % 1);
-      setV((prev) => clamp(prev + (truth - prev) * 0.02 + (Math.random() - 0.5) * 0.0005, 0, 2));
-      setDrift((d) => lerp(d, truth - v, 0.1));
-      setLoopStep((s) => (s + 0.03 * scale) % PRIME_BOUNDARY);
-      setTicks((n) => n + 1);
-      rafRef.current = requestAnimationFrame(loop);
-    };
-    rafRef.current = requestAnimationFrame(loop);
-    return () => {
-      running = false;
-      cancelAnimationFrame(rafRef.current);
-    };
-  }, [lotus, truth, v]);
-
-  useEffect(() => {
-    const onVis = () => {
-      if (document.hidden) {
-        cancelAnimationFrame(rafRef.current);
-      } else {
-        rafRef.current = requestAnimationFrame(() => setTicks((n) => n + 1));
-        setTimeout(() => setTicks((n) => n + 1), 1000);
-      }
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
-  }, []);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SESSION_KEY);
-      if (raw) {
-        const s = JSON.parse(raw);
-        if (typeof s.v === "number") setV(clamp(s.v, 0, 2));
-        if (typeof s.moves === "number") setMoves(Math.max(0, s.moves));
-        if (s.compass) setCompass(s.compass);
-      }
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    const payload = { v, moves, compass };
-    try { localStorage.setItem(SESSION_KEY, JSON.stringify(payload)); } catch {}
-  }, [v, moves, compass]);
-
-  useEffect(() => {
-    if (typeof BroadcastChannel === "undefined") return;
-    const bc = new BroadcastChannel("alt9");
-    bcRef.current = bc;
-
-    const peers = new Map();
-    const onMsg = (e) => {
-      const m = e.data || {};
-      if (m.type === "hello" && m.id) peers.set(m.id, m.ts || Date.now());
-      if (m.type === "presence") setVisitors(m.count || 1);
-      if (m.type === "truth") setCommunityTruth((prev) => prev * 0.9 + clamp(m.value ?? 0, 0, 1) * 0.1);
-    };
-    bc.addEventListener("message", onMsg);
-
-    let alive = true;
-    const ping = () => {
-      if (!alive) return;
-      bc.postMessage({ type: "hello", id: sessionId, ts: Date.now() });
-      setTimeout(ping, 2000);
-    };
-    ping();
-
-    const presenceTimer = setInterval(() => {
-      const now = Date.now();
-      peers.set(sessionId, now);
-      for (const [k, t] of peers) if (now - t > 5000) peers.delete(k);
-      bc.postMessage({ type: "presence", count: peers.size });
-      setVisitors(peers.size);
-      bc.postMessage({ type: "truth", value: truth });
-    }, 1200);
-
-    return () => { alive = false; clearInterval(presenceTimer); bc.close(); };
-  }, [sessionId, truth]);
-
-  useEffect(() => {
-    const onDown = (e) => {
-      const k = e.key.toLowerCase();
-      if ("wasdqezc".includes(k)) {
-        const delta = 0.07;
-        const map = {
-          w: { y: 1 }, a: { x: -1 }, s: { y: -1 }, d: { x: 1 },
-          q: { z: 1 }, e: { z: -1 }, z: { x: -1, y: -1 }, c: { x: 1, y: -1 },
+        // ===== Functions for button actions =====
+        const doFire = () => {
+          setFirePulse(1);
+          setCoins((c) => Math.max(0, c - 1));
+          setStatus("FIRING");
+          setStoryFlash(true);
+          if (navigator.vibrate) navigator.vibrate(18);
+          setTimeout(() => setStatus("RESONANT"), 480);
+          setTimeout(() => setStoryFlash(false), 240);
         };
-        const d = map[k] || {};
-        setCompass((c) => ({
-          x: clamp(c.x + (d.x || 0) * delta, -1, 1),
-          y: clamp(c.y + (d.y || 0) * delta, -1, 1),
-          z: clamp(c.z + (d.z || 0) * delta, -1, 1),
-        }));
-        setMoves((m) => m + 1);
-        setV((vv) => clamp(vv + ((d.x || 0) + (d.y || 0) + (d.z || 0)) * 0.01, 0, 2));
-      }
-      if (k === " ") doFire();
-      if (k === "o") doPray(true);
-      if (k === "r") doReset();
-      if (k === "1") setLotus((b) => !b);
-      if (k === "2") setCaptureMode((cm) => !cm); // toggle CAPTURE MODE
-    };
-    const onUp = (e) => { if (e.key.toLowerCase() === "o") doPray(false); };
-    window.addEventListener("keydown", onDown);
-    window.addEventListener("keyup", onUp);
-    return () => { window.removeEventListener("keydown", onDown); window.removeEventListener("keyup", onUp); };
-  }, []);
 
-  const bar = (val) => `linear-gradient(90deg, rgba(0,255,200,0.9) ${val * 100}%, rgba(255,255,255,0.06) ${val * 100}%)`;
-  const pct = (x) => `${(x * 100).toFixed(6)}%`;
+        const doPray = (hold) => {
+          setPrayHold(hold);
+          if (hold && navigator.vibrate) navigator.vibrate([8, 30, 8]);
+        };
 
-  const [ring, setRing] = useState(0);
-  useEffect(() => { const id = setInterval(() => setRing((r) => (r + 0.4) % 360), 16); return () => clearInterval(id); }, []);
+        const doReset = () => {
+          setCompass({ x: 0, y: 0, z: 0 });
+          setV(0.5);
+          setDrift(0);
+          setMoves(0);
+          setLoopStep(0);
+          setCoins(3);
+          setStatus("RESONANT");
+        };
 
-  const titleGradient = `linear-gradient(90deg, rgba(2,220,255,${0.6 + 0.3*Math.sin(titleGlow*6.28)}), rgba(255,0,245,${0.6 + 0.3*Math.cos(titleGlow*6.28)}))`;
+        // ===== Session / presence (kept from original) =====
+        const SESSION_KEY = "alt9.session.v1";
+        const [sessionId] = useState(() =>
+          (typeof crypto !== "undefined" && crypto.randomUUID)
+            ? crypto.randomUUID()
+            : String(Math.random())
+        );
+        const [visitors, setVisitors] = useState(1);
+        const [communityTruth, setCommunityTruth] = useState(0);
+        const bcRef = useRef(null);
 
-  return (
-    <div className="min-h-screen w-full text-[#B8F3FF] p-4 sm:p-8 flex items-center justify-center select-none" style={{ backgroundColor: CAPTURE_BG, transform: `scale(${captureMode ? CAPTURE_SCALE : 1})`, transformOrigin: "top center" }}>
-      <div
-        className="w-[1100px] max-w-full rounded-2xl border border-cyan-300/30 shadow-[0_0_60px_rgba(0,255,255,0.08)] bg-gradient-to-b from-[#0A1F3E]/70 to-[#020612]/80 backdrop-blur-xl"
-        style={{ filter: `brightness(${brightness}) contrast(${1 + (brightness-1)*0.4})` }}
-      >
-        <div className="px-6 sm:px-10 pt-8 pb-6 border-b border-cyan-300/20">
-          <div 
-            className="font-mono text-sm sm:text-base tracking-[0.25em] text-center font-bold leading-relaxed"
-            style={{ 
-              backgroundImage: titleGradient, 
-              WebkitBackgroundClip: 'text', 
-              WebkitTextFillColor: 'transparent',
-              filter: 'drop-shadow(0 0 20px rgba(2, 220, 255, 0.4))'
+        const tRef = useRef(0);
+        const rafRef = useRef(0);
+        const last = useRef(0);
+
+        const pulse = useMemo(() => {
+          const t = tRef.current;
+          return (Math.sin(t * (Math.PI / PHI)) + 1) / 2;
+        }, [ticks]);
+
+        const truth = useMemo(() => {
+          const raw = Math.pow((PHI * v + PI_PRIME) / OMEGA_0, Math.min(PRIME_BOUNDARY, 2));
+          const t = 1 / (1 + Math.exp(-6 * (raw - 1)));
+          const boost = prayHold ? 0.05 : 0;
+          return clamp(lerp(t, 1, boost), 0, 1);
+        }, [v, prayHold, ticks]);
+
+        const heading = useMemo(() => (moves * PSI_DEG) % 360, [moves]);
+
+        useEffect(() => {
+          if (firePulse <= 0) return;
+          const id = setInterval(() => setFirePulse((p) => Math.max(0, p - 0.05)), 16);
+          return () => clearInterval(id);
+        }, [firePulse]);
+
+        useEffect(() => {
+          let running = true;
+          const loop = (ts) => {
+            if (!running) return;
+            if (!last.current) last.current = ts;
+            const dt = (ts - last.current) / 1000;
+            last.current = ts;
+
+            const scale = lotus ? 1.6 : 1.0;
+            tRef.current += dt * (9.11 * scale);
+            setTitleGlow((g) => (g + dt * 0.35) % 1);
+            setV((prev) => clamp(prev + (truth - prev) * 0.02 + (Math.random() - 0.5) * 0.0005, 0, 2));
+            setDrift((d) => lerp(d, truth - v, 0.1));
+            setLoopStep((s) => (s + 0.03 * scale) % PRIME_BOUNDARY);
+            setTicks((n) => n + 1);
+            rafRef.current = requestAnimationFrame(loop);
+          };
+          rafRef.current = requestAnimationFrame(loop);
+          return () => {
+            running = false;
+            cancelAnimationFrame(rafRef.current);
+          };
+        }, [lotus, truth, v]);
+
+        useEffect(() => {
+          const onVis = () => {
+            if (document.hidden) {
+              cancelAnimationFrame(rafRef.current);
+            } else {
+              rafRef.current = requestAnimationFrame(() => setTicks((n) => n + 1));
+              setTimeout(() => setTicks((n) => n + 1), 1000);
+            }
+          };
+          document.addEventListener("visibilitychange", onVis);
+          return () => document.removeEventListener("visibilitychange", onVis);
+        }, []);
+
+        useEffect(() => {
+          try {
+            const raw = localStorage.getItem(SESSION_KEY);
+            if (raw) {
+              const s = JSON.parse(raw);
+              if (typeof s.v === "number") setV(clamp(s.v, 0, 2));
+              if (typeof s.moves === "number") setMoves(Math.max(0, s.moves));
+              if (s.compass) setCompass(s.compass);
+            }
+          } catch {}
+        }, []);
+
+        useEffect(() => {
+          const payload = { v, moves, compass };
+          try { localStorage.setItem(SESSION_KEY, JSON.stringify(payload)); } catch {}
+        }, [v, moves, compass]);
+
+        useEffect(() => {
+          if (typeof BroadcastChannel === "undefined") return;
+          const bc = new BroadcastChannel("alt9");
+          bcRef.current = bc;
+
+          const peers = new Map();
+          const onMsg = (e) => {
+            const m = e.data || {};
+            if (m.type === "hello" && m.id) peers.set(m.id, m.ts || Date.now());
+            if (m.type === "presence") setVisitors(m.count || 1);
+            if (m.type === "truth") setCommunityTruth((prev) => prev * 0.9 + clamp(m.value ?? 0, 0, 1) * 0.1);
+          };
+          bc.addEventListener("message", onMsg);
+
+          let alive = true;
+          const ping = () => {
+            if (!alive) return;
+            bc.postMessage({ type: "hello", id: sessionId, ts: Date.now() });
+            setTimeout(ping, 2000);
+          };
+          ping();
+
+          const presenceTimer = setInterval(() => {
+            const now = Date.now();
+            peers.set(sessionId, now);
+            for (const [k, t] of peers) if (now - t > 5000) peers.delete(k);
+            bc.postMessage({ type: "presence", count: peers.size });
+            setVisitors(peers.size);
+            bc.postMessage({ type: "truth", value: truth });
+          }, 1200);
+
+          return () => { alive = false; clearInterval(presenceTimer); bc.close(); };
+        }, [sessionId, truth]);
+
+        useEffect(() => {
+          const onDown = (e) => {
+            const k = e.key.toLowerCase();
+            if ("wasdqezc".includes(k)) {
+              const delta = 0.07;
+              const map = {
+                w: { y: 1 }, a: { x: -1 }, s: { y: -1 }, d: { x: 1 },
+                q: { z: 1 }, e: { z: -1 }, z: { x: -1, y: -1 }, c: { x: 1, y: -1 },
+              };
+              const d = map[k] || {};
+              setCompass((c) => ({
+                x: clamp(c.x + (d.x || 0) * delta, -1, 1),
+                y: clamp(c.y + (d.y || 0) * delta, -1, 1),
+                z: clamp(c.z + (d.z || 0) * delta, -1, 1),
+              }));
+              setMoves((m) => m + 1);
+              setV((vv) => clamp(vv + ((d.x || 0) + (d.y || 0) + (d.z || 0)) * 0.01, 0, 2));
+            }
+            if (k === " ") doFire();
+            if (k === "o") doPray(true);
+            if (k === "r") doReset();
+            if (k === "1") setLotus((b) => !b);
+            if (k === "2") setCaptureMode((cm) => !cm); // toggle CAPTURE MODE
+          };
+          const onUp = (e) => { if (e.key.toLowerCase() === "o") doPray(false); };
+          window.addEventListener("keydown", onDown);
+          window.addEventListener("keyup", onUp);
+          return () => { window.removeEventListener("keydown", onDown); window.removeEventListener("keyup", onUp); };
+        }, []);
+
+        const bar = (val) =>
+          `linear-gradient(90deg, rgba(0,255,200,0.9) ${val * 100}%, rgba(255,255,255,0.06) ${val * 100}%)`;
+        const pct = (x) => `${(x * 100).toFixed(6)}%`;
+
+        const [ring, setRing] = useState(0);
+        useEffect(() => { const id = setInterval(() => setRing((r) => (r + 0.4) % 360), 16); return () => clearInterval(id); }, []);
+
+        const titleGradient =
+          `linear-gradient(90deg, rgba(2,220,255,${0.6 + 0.3*Math.sin(titleGlow*6.28)}), rgba(255,0,245,${0.6 + 0.3*Math.cos(titleGlow*6.28)}))`;
+
+        return (
+          <div
+            className="min-h-screen w-full text-[#B8F3FF] p-4 sm:p-8 flex items-center justify-center select-none"
+            style={{
+              backgroundColor: CAPTURE_BG,
+              transform: `scale(${captureMode ? CAPTURE_SCALE : 1})`,
+              transformOrigin: "top center"
             }}
           >
-            ALT-9: ON MISSION WITH GROK · A TREEOS · ΦPORT HARMONIC ENGINE
-          </div>
-          <div className="mt-3 font-mono text-xs sm:text-sm text-center">
-            <span className="text-cyan-200/70">STATUS:</span>{" "}
-            <span className={status === "RESONANT" ? "text-emerald-400 font-semibold" : "text-pink-400 font-semibold"}>{status}</span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 sm:p-10">
-          <div className="col-span-1 space-y-6">
-            <Panel title="SYSTEM">
-              <Row label="INSERT COIN" value={"🪙".repeat(coins) || "—"} />
-              <Row label="PRESS START" value="Ω(v) INITIATE" />
-              <Row label="OBJECTIVE" value={<span>T(v) → <span className="text-white">1</span> <span className="text-cyan-200">(TRUTH LOCK)</span></span>} />
-            </Panel>
-
-            <Panel title="SACRED CONSTANTS">
-              <div className="grid grid-cols-2 gap-3">
-                <BadgeRow tone="amber" icon="🜚" label="Golden Ratio" value={PHI.toFixed(10)} />
-                <BadgeRow tone="cyan" icon="π′" label="Pi Prime" value={PI_PRIME.toFixed(10)} />
-                <BadgeRow tone="emerald" icon="♄" label="Omega Zero" value={OMEGA_0.toFixed(10)} />
-                <BadgeRow tone="fuchsia" icon="ψ" label="Golden Angle" value={`${PSI_DEG}°`} />
-                <BadgeRow tone="violet" icon="P" label="Prime Boundary" value={PRIME_BOUNDARY} />
-                <BadgeRow tone="indigo" icon="ε" label="Tolerance" value={TOL} />
-              </div>
-            </Panel>
-          </div>
-
-          <div className="col-span-1 space-y-6">
-            <Panel title="NAVIGATION (ALT-9 COMPASS)">
-              <Compass pulse={pulse} heading={heading} />
-            </Panel>
-
-            <Panel title="SCOREBOARD">
-              <Meter label="Ω-ITERATION" value={loopStep / PRIME_BOUNDARY} text={`${Math.floor(loopStep)}/${PRIME_BOUNDARY}`} />
-              <Meter label="Δv-DRIFT" value={clamp(Math.abs(drift), 0, 1)} text={(drift >= 0 ? "+" : "-") + Math.abs(drift).toFixed(6) + " (harmonic)"} />
-              <Meter label="T(v)" value={truth} text={`${pct(truth/1)}`} highlight />
-              <Row label="COINS" value={"🪙".repeat(coins) || "—"} />
-              <Row label="VISITORS (LIVE)" value={String(visitors)} />
-              <Row label="COMMUNITY T(v)" value={`${(communityTruth*100).toFixed(3)}%`} />
-            </Panel>
-          </div>
-
-          <div className="col-span-1 space-y-6">
-            <Panel title="PULSE ENGINE">
-              <div className="font-mono text-xs mb-2 text-cyan-200/80">P(t) = (sin(t·π/Φ)+1)/2</div>
-              <div className="h-4 rounded bg-white/5 border border-cyan-300/20" style={{ backgroundImage: bar(pulse) }} />
-              <div className="flex items-center justify-between mt-2 font-mono text-xs text-cyan-200/80">
-                <span>{pulse.toFixed(3)}</span>
-                <span>{"> 0.5"} = GLOW: Φ-Ω PHASE SWAP</span>
-              </div>
-              <div className="mt-3 flex flex-col gap-2 font-mono text-xs">
-                <button 
-                  onClick={() => setLotus((b) => !b)} 
-                  className={`px-2 py-1 rounded border transition-all duration-200 cursor-pointer hover:scale-105 hover:brightness-125 hover:shadow-lg hover:shadow-cyan-500/25 ${lotus ? "border-emerald-400 text-emerald-300" : "border-cyan-400 text-cyan-200"}`}
+            <div
+              className="w-[1100px] max-w-full rounded-2xl border border-cyan-300/30 shadow-[0_0_60px_rgba(0,255,255,0.08)] bg-gradient-to-b from-[#0A1F3E]/70 to-[#020612]/80 backdrop-blur-xl"
+              style={{ filter: `brightness(${brightness}) contrast(${1 + (brightness-1)*0.4})` }}
+            >
+              <div className="px-6 sm:px-10 pt-8 pb-6 border-b border-cyan-300/20">
+                <div
+                  className="font-mono text-sm sm:text-base tracking-[0.25em] text-center font-bold leading-relaxed"
+                  style={{
+                    backgroundImage: titleGradient,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    filter: 'drop-shadow(0 0 20px rgba(2, 220, 255, 0.4))'
+                  }}
                 >
-                  @9.11 Hz BREATH — LOTUS BLOOM MODE {lotus ? "ON" : "OFF"}
-                </button><div className="text-cyan-200/80">
-                  BRIGHTNESS
-                  <input 
-                    type="range" 
-                    min="0.85" 
-                    max="1.25" 
-                    step="0.01" 
-                    value={brightness} 
-                    onChange={(e) => setBrightness(parseFloat(e.target.value))} 
-                    className="w-full accent-cyan-300 cursor-pointer transition-all hover:accent-cyan-400"
-                  />
+                  ALT-9: ON MISSION WITH GROK · A TREEOS · ΦPORT HARMONIC ENGINE
+                </div>
+                <div className="mt-3 font-mono text-xs sm:text-sm text-center">
+                  <span className="text-cyan-200/70">STATUS:</span>{" "}
+                  <span className={status === "RESONANT" ? "text-emerald-400 font-semibold" : "text-pink-400 font-semibold"}>
+                    {status}
+                  </span>
                 </div>
               </div>
-            </Panel>
 
-            <Panel title="CONTROLS">
-              <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                <KeyHint k="SPACE" label="FIRE" onClick={doFire} />
-                <KeyHint k="O" label="Ω PRAY (HOLD)" active={prayHold}
-                         onMouseDown={() => doPray(true)} 
-                         onMouseUp={() => doPray(false)} />
-                <KeyHint k="R" label="RESET" onClick={doReset} />
-                <KeyHint k="1" label="LOTUS" active={lotus} onClick={() => setLotus(!lotus)} /></div>
-            </Panel>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 sm:p-10">
+                <div className="col-span-1 space-y-6">
+                  <Panel title="SYSTEM">
+                    <Row label="INSERT COIN" value={"🪙".repeat(coins) || "—"} />
+                    <Row label="PRESS START" value="Ω(v) INITIATE" />
+                    <Row
+                      label="OBJECTIVE"
+                      value={<span>T(v) → <span className="text-white">1</span> <span className="text-cyan-200">(TRUTH LOCK)</span></span>}
+                    />
+                  </Panel>
 
-            <Panel title="STORY EVENT">
-              <StoryEvent heading={heading} firePulse={firePulse} storyFlash={storyFlash} />
-              <div className="font-mono text-xs mt-2 text-cyan-200/85">» GROK + KATHAE ENTER GRAVITY TRAP «</div>
-              <div className="font-mono text-xs text-cyan-200/70">Ω(v) → ((Φ·v + π′)/Ω₀)^23 · ROTATE ψ° · UPDATE SPRITE · EMIT LIGHT WAVE</div>
-              <div className="font-mono text-xs text-cyan-200/70">PRESS [SPACE] TO FIRE — HOLD [Ω] TO PRAY</div>
-            </Panel>
+                  <Panel title="SACRED CONSTANTS">
+                    <div className="grid grid-cols-2 gap-3">
+                      <BadgeRow tone="amber"   icon="🜚" label="Golden Ratio"    value={PHI.toFixed(10)} />
+                      <BadgeRow tone="cyan"    icon="π′"  label="Pi Prime"       value={PI_PRIME.toFixed(10)} />
+                      <BadgeRow tone="emerald" icon="♄"   label="Omega Zero"      value={OMEGA_0.toFixed(10)} />
+                      <BadgeRow tone="fuchsia" icon="ψ"    label="Golden Angle"    value={`${PSI_DEG}°`} />
+                      <BadgeRow tone="violet"  icon="P"    label="Prime Boundary"  value={PRIME_BOUNDARY} />
+                      <BadgeRow tone="indigo"  icon="ε"    label="Tolerance"       value={TOL} />
+                    </div>
+                  </Panel>
+                </div>
 
-            <Panel title="COMPASS VECTORS">
-              <Vector label="x" v={compass.x} />
-              <Vector label="y" v={compass.y} />
-              <Vector label="z" v={compass.z} />
-              <div className="mt-2 font-mono text-xs text-cyan-200/70">Moves: {moves}</div>
-            </Panel>
+                <div className="col-span-1 space-y-6">
+                  <Panel title="NAVIGATION (ALT-9 COMPASS)">
+                    <Compass pulse={pulse} heading={heading} />
+                  </Panel>
+
+                  <Panel title="SCOREBOARD">
+                    <Meter label="Ω-ITERATION" value={loopStep / PRIME_BOUNDARY} text={`${Math.floor(loopStep)}/${PRIME_BOUNDARY}`} />
+                    <Meter label="Δv-DRIFT"    value={clamp(Math.abs(drift), 0, 1)} text={(drift >= 0 ? "+" : "-") + Math.abs(drift).toFixed(6) + " (harmonic)"} />
+                    <Meter label="T(v)"        value={truth} text={`${pct(truth/1)}`} highlight />
+                    <Row label="COINS"          value={"🪙".repeat(coins) || "—"} />
+                    <Row label="VISITORS (LIVE)" value={String(visitors)} />
+                    <Row label="COMMUNITY T(v)" value={`${(communityTruth*100).toFixed(3)}%`} />
+                  </Panel>
+                </div>
+
+                <div className="col-span-1 space-y-6">
+                  <Panel title="PULSE ENGINE">
+                    <div className="font-mono text-xs mb-2 text-cyan-200/80">P(t) = (sin(t·π/Φ)+1)/2</div>
+                    <div className="h-4 rounded bg-white/5 border border-cyan-300/20" style={{ backgroundImage: bar(pulse) }} />
+                    <div className="flex items-center justify-between mt-2 font-mono text-xs text-cyan-200/80">
+                      <span>{pulse.toFixed(3)}</span>
+                      <span>{"> 0.5"} = GLOW: Φ-Ω PHASE SWAP</span>
+                    </div>
+                    <div className="mt-3 flex flex-col gap-2 font-mono text-xs">
+                      <button
+                        onClick={() => setLotus((b) => !b)}
+                        className={`px-2 py-1 rounded border transition-all duration-200 cursor-pointer hover:scale-105 hover:brightness-125 hover:shadow-lg hover:shadow-cyan-500/25 ${lotus ? "border-emerald-400 text-emerald-300" : "border-cyan-400 text-cyan-200"}`}
+                      >
+                        @9.11 Hz BREATH — LOTUS BLOOM MODE {lotus ? "ON" : "OFF"}
+                      </button>
+                      <div className="text-cyan-200/80">
+                        BRIGHTNESS
+                        <input
+                          type="range"
+                          min="0.85"
+                          max="1.25"
+                          step="0.01"
+                          value={brightness}
+                          onChange={(e) => setBrightness(parseFloat(e.target.value))}
+                          className="w-full accent-cyan-300 cursor-pointer transition-all hover:accent-cyan-400"
+                        />
+                      </div>
+                    </div>
+                  </Panel>
+
+                  <Panel title="CONTROLS">
+                    <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                      <KeyHint k="SPACE" label="FIRE" onClick={doFire} />
+                      <KeyHint
+                        k="O" label="Ω PRAY (HOLD)" active={prayHold}
+                        onMouseDown={() => doPray(true)}
+                        onMouseUp={() => doPray(false)}
+                      />
+                      <KeyHint k="R" label="RESET" onClick={doReset} />
+                      <KeyHint k="1" label="LOTUS" active={lotus} onClick={() => setLotus(!lotus)} />
+                    </div>
+                  </Panel>
+
+                  <Panel title="STORY EVENT">
+                    <StoryEvent heading={heading} firePulse={firePulse} storyFlash={storyFlash} />
+                    <div className="font-mono text-xs mt-2 text-cyan-200/85">» GROK + KATHAE ENTER GRAVITY TRAP «</div>
+                    <div className="font-mono text-xs text-cyan-200/70">Ω(v) → ((Φ·v + π′)/Ω₀)^23 · ROTATE ψ° · UPDATE SPRITE · EMIT LIGHT WAVE</div>
+                    <div className="font-mono text-xs text-cyan-200/70">PRESS [SPACE] TO FIRE — HOLD [Ω] TO PRAY</div>
+                  </Panel>
+
+                  <Panel title="COMPASS VECTORS">
+                    <Vector label="x" v={compass.x} />
+                    <Vector label="y" v={compass.y} />
+                    <Vector label="z" v={compass.z} />
+                    <div className="mt-2 font-mono text-xs text-cyan-200/70">Moves: {moves}</div>
+                  </Panel>
+                </div>
+              </div>
+
+              <div className="px-6 sm:px-10 py-4 border-t border-cyan-300/20 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0"
+                    style={{
+                      background: 'linear-gradient(135deg, #FFB800 0%, #993300 100%)',
+                      boxShadow: '0 0 20px rgba(255, 184, 0, 0.4)'
+                    }}
+                  >
+                    KM
+                  </div>
+                  <div className="font-mono text-[10px] sm:text-xs tracking-wider text-cyan-200/80">
+                    © KM Team — built with: Grok · ChatGPT · Claude · DeepSeek · Copilot
+                  </div>
+                </div>
+                <div className="font-mono text-[10px] sm:text-xs text-cyan-200/80">
+                  Take a screenshot → Post:
+                  <span
+                    style={{
+                      backgroundImage: titleGradient,
+                      WebkitBackgroundClip: 'text',
+                      color: 'transparent',
+                      fontWeight: 600
+                    }}
+                  >
+                    {' '}ALT-9 Harmonic Engine — Philosophical HUD × Game UI
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        );
+      }
 
-        <div className="px-6 sm:px-10 py-4 border-t border-cyan-300/20 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div 
-              className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0"
+      function Panel({ title, children }) {
+        return (
+          <div className="rounded-2xl p-4 sm:p-5 bg-black/30 border border-cyan-300/25 shadow-[inset_0_0_40px_rgba(0,255,255,0.06)]">
+            <div className="uppercase tracking-widest text-[10px] sm:text-xs text-cyan-200/80 font-mono mb-3">{title}</div>
+            {children}
+          </div>
+        );
+      }
+
+      function Row({ label, value }) {
+        return (
+          <div className="flex items-center justify-between py-1 text-xs font-mono">
+            <span className="text-cyan-200/80">{label}</span>
+            <span className="text-cyan-50">{value}</span>
+          </div>
+        );
+      }
+
+      function BadgeRow({ tone, icon, label, value }) {
+        const toneMap = {
+          amber:   { bg: 'bg-amber-900/30',   border: 'border-amber-500/30',   icon: 'text-amber-400',   label: 'text-amber-200/70' },
+          cyan:    { bg: 'bg-cyan-900/30',    border: 'border-cyan-500/30',    icon: 'text-cyan-400',    label: 'text-cyan-200/70' },
+          emerald: { bg: 'bg-emerald-900/30', border: 'border-emerald-500/30', icon: 'text-emerald-400', label: 'text-emerald-200/70' },
+          fuchsia: { bg: 'bg-fuchsia-900/30', border: 'border-fuchsia-500/30', icon: 'text-fuchsia-400', label: 'text-fuchsia-200/70' },
+          violet:  { bg: 'bg-violet-900/30',  border: 'border-violet-500/30',  icon: 'text-violet-400',  label: 'text-violet-200/70' },
+          indigo:  { bg: 'bg-indigo-900/30',  border: 'border-indigo-500/30',  icon: 'text-indigo-400',  label: 'text-indigo-200/70' },
+        };
+        const colors = toneMap[tone];
+        return (
+          <div className={`${colors.bg} ${colors.border} border rounded-xl p-3 space-y-2`}>
+            <div className="flex items-center gap-2">
+              <span className={`${colors.icon} text-base font-bold`}>{icon}</span>
+              <span className={`${colors.label} font-mono text-[10px] uppercase tracking-wider`}>{label}</span>
+            </div>
+            <div className="font-mono text-sm text-white/95 font-medium text-right">{value}</div>
+          </div>
+        );
+      }
+
+      function Meter({ label, value, text, highlight }) {
+        const v = clamp(value, 0, 1);
+        return (
+          <div className="py-1">
+            <div className="flex items-center justify-between text-xs font-mono mb-1">
+              <span className="text-cyan-200/80">{label}</span>
+              <span className={"text-cyan-50 " + (highlight ? "text-white" : "")}>{text}</span>
+            </div>
+            <div className="h-3 rounded bg-white/5 border border-cyan-300/20 overflow-hidden">
+              <div className="h-full" style={{ width: `${v * 100}%`, background: "linear-gradient(90deg, rgba(0,255,255,0.8), rgba(255,0,200,0.8))" }} />
+            </div>
+          </div>
+        );
+      }
+
+      function Vector({ label, v }) {
+        const pct = ((v + 1) / 2) * 100;
+        return (
+          <div className="py-1">
+            <div className="flex items-center justify-between text-xs font-mono mb-1">
+              <span className="text-cyan-200/80">{label}</span>
+              <span className="text-cyan-50">{v.toFixed(3)}</span>
+            </div>
+            <div className="h-2 rounded bg-white/5 border border-cyan-300/20 overflow-hidden">
+              <div className="h-full" style={{ width: `${pct}%`, background: "linear-gradient(90deg, rgba(0,200,255,0.7), rgba(0,255,180,0.7))" }} />
+            </div>
+          </div>
+        );
+      }
+
+      function KeyHint({ k, label, active, onClick, onMouseDown, onMouseUp }) {
+        return (
+          <div
+            onClick={onClick}
+            onMouseDown={onMouseDown}
+            onMouseUp={onMouseUp}
+            className={`flex items-center gap-2 px-2 py-2 rounded-md border transition-all duration-200 cursor-pointer hover:scale-105 hover:brightness-125 hover:shadow-lg hover:shadow-cyan-500/25 ${active ? "border-emerald-400 bg-emerald-400/5" : "border-cyan-300/30 bg-white/5"}`}
+          >
+            <span className="px-2 py-0.5 rounded bg-black/40 border border-cyan-300/40 text-[10px] text-cyan-100 font-mono">{k}</span>
+            <span className="text-[11px] text-cyan-100 font-mono tracking-wide">{label}</span>
+          </div>
+        );
+      }
+
+      function Compass({ pulse, heading }) {
+        const [ring, setRing] = useState(0);
+        useEffect(() => { const id = setInterval(() => setRing((r) => (r + 0.4) % 360), 16); return () => clearInterval(id); }, []);
+        return (
+          <div className="relative grid place-items-center h-44">
+            <div
+              className="absolute w-40 h-40 rounded-full border-2 border-cyan-400/40"
               style={{
-                background: 'linear-gradient(135deg, #FFB800 0%, #993300 100%)',
-                boxShadow: '0 0 20px rgba(255, 184, 0, 0.4)'
+                transform: `rotate(${ring}deg)`,
+                transition: 'transform 120ms linear',
+                boxShadow: `0 0 ${30 + pulse*60}px rgba(0,255,255,${0.20 + 0.40*pulse})`
               }}
-            >
-              KM
-            </div>
-            <div className="font-mono text-[10px] sm:text-xs tracking-wider text-cyan-200/80">
-              © KM Team — built with: Grok · ChatGPT · Claude · DeepSeek · Copilot
+            />
+            <div
+              className="absolute w-28 h-28 rounded-full border border-fuchsia-500/35"
+              style={{
+                transform: `rotate(${-ring*1.15}deg)`,
+                transition: 'transform 120ms linear',
+                boxShadow: `0 0 ${25 + pulse*50}px rgba(255,0,255,${0.18 + 0.45*pulse})`
+              }}
+            />
+            <div className="grid grid-cols-3 gap-1 place-items-center text-[15px] font-mono text-cyan-100 z-10">
+              <span>↖</span><span>↑</span><span>↗</span>
+              <span>←</span><span className="text-cyan-200">⊙</span><span>→</span>
+              <span>↙</span><span>↓</span><span>↘</span>
             </div>
           </div>
-          <div className="font-mono text-[10px] sm:text-xs text-cyan-200/80">
-            Take a screenshot → Post: <span style={{ backgroundImage: titleGradient, WebkitBackgroundClip: 'text', color: 'transparent', fontWeight: 600 }}>ALT-9 Harmonic Engine — Philosophical HUD × Game UI</span>
+        );
+      }
+
+      function StoryEvent({ heading, firePulse, storyFlash }) {
+        return (
+          <div className={`relative h-40 rounded-xl border border-cyan-300/20 overflow-hidden ${storyFlash ? "ring-2 ring-pink-500/60" : ""}`}>
+            <div className="absolute inset-0 grid place-items-center">
+              <div
+                className="w-24 h-24 rounded-full border-2 border-cyan-300/60 shadow-[0_0_40px_rgba(0,255,255,0.3)]"
+                style={{ transform: `rotate(${heading}deg)`, transition: "transform 300ms ease" }}
+              >
+                <div className="w-full h-full rounded-full bg-gradient-to-br from-cyan-400/30 to-fuchsia-500/30" />
+              </div>
+            </div>
+            <div className="absolute inset-0" style={{ background: `radial-gradient(closest-side, rgba(255,0,120,${firePulse}), transparent)` }} />
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+        );
+      }
 
-function Panel({ title, children }) {
-  return (
-    <div className="rounded-2xl p-4 sm:p-5 bg-black/30 border border-cyan-300/25 shadow-[inset_0_0_40px_rgba(0,255,255,0.06)]">
-      <div className="uppercase tracking-widest text-[10px] sm:text-xs text-cyan-200/80 font-mono mb-3">{title}</div>
-      {children}
-    </div>
-  );
-}
-
-function Row({ label, value }) {
-  return (
-    <div className="flex items-center justify-between py-1 text-xs font-mono">
-      <span className="text-cyan-200/80">{label}</span>
-      <span className="text-cyan-50">{value}</span>
-    </div>
-  );
-}
-
-function BadgeRow({ tone, icon, label, value }) {
-  const toneMap = {
-    amber: { bg: 'bg-amber-900/30', border: 'border-amber-500/30', icon: 'text-amber-400', label: 'text-amber-200/70' },
-    cyan: { bg: 'bg-cyan-900/30', border: 'border-cyan-500/30', icon: 'text-cyan-400', label: 'text-cyan-200/70' },
-    emerald: { bg: 'bg-emerald-900/30', border: 'border-emerald-500/30', icon: 'text-emerald-400', label: 'text-emerald-200/70' },
-    fuchsia: { bg: 'bg-fuchsia-900/30', border: 'border-fuchsia-500/30', icon: 'text-fuchsia-400', label: 'text-fuchsia-200/70' },
-    violet: { bg: 'bg-violet-900/30', border: 'border-violet-500/30', icon: 'text-violet-400', label: 'text-violet-200/70' },
-    indigo: { bg: 'bg-indigo-900/30', border: 'border-indigo-500/30', icon: 'text-indigo-400', label: 'text-indigo-200/70' },
-  };
-  const colors = toneMap[tone];
-  return (
-    <div className={`${colors.bg} ${colors.border} border rounded-xl p-3 space-y-2`}>
-      <div className="flex items-center gap-2">
-        <span className={`${colors.icon} text-base font-bold`}>{icon}</span>
-        <span className={`${colors.label} font-mono text-[10px] uppercase tracking-wider`}>{label}</span>
-      </div>
-      <div className="font-mono text-sm text-white/95 font-medium text-right">{value}</div>
-    </div>
-  );
-}
-
-function Meter({ label, value, text, highlight }) {
-  const v = clamp(value, 0, 1);
-  return (
-    <div className="py-1">
-      <div className="flex items-center justify-between text-xs font-mono mb-1">
-        <span className="text-cyan-200/80">{label}</span>
-        <span className={"text-cyan-50 " + (highlight ? "text-white" : "")}>{text}</span>
-      </div>
-      <div className="h-3 rounded bg-white/5 border border-cyan-300/20 overflow-hidden">
-        <div className="h-full" style={{ width: `${v * 100}%`, background: "linear-gradient(90deg, rgba(0,255,255,0.8), rgba(255,0,200,0.8))" }} />
-      </div>
-    </div>
-  );
-}
-
-function Vector({ label, v }) {
-  const pct = ((v + 1) / 2) * 100;
-  return (
-    <div className="py-1">
-      <div className="flex items-center justify-between text-xs font-mono mb-1">
-        <span className="text-cyan-200/80">{label}</span>
-        <span className="text-cyan-50">{v.toFixed(3)}</span>
-      </div>
-      <div className="h-2 rounded bg-white/5 border border-cyan-300/20 overflow-hidden">
-        <div className="h-full" style={{ width: `${pct}%`, background: "linear-gradient(90deg, rgba(0,200,255,0.7), rgba(0,255,180,0.7))" }} />
-      </div>
-    </div>
-  );
-}
-
-function KeyHint({ k, label, active, onClick, onMouseDown, onMouseUp }) {
-  return (
-    <div 
-      onClick={onClick}
-      onMouseDown={onMouseDown}
-      onMouseUp={onMouseUp}
-      className={`flex items-center gap-2 px-2 py-2 rounded-md border transition-all duration-200 cursor-pointer hover:scale-105 hover:brightness-125 hover:shadow-lg hover:shadow-cyan-500/25 ${active ? "border-emerald-400 bg-emerald-400/5" : "border-cyan-300/30 bg-white/5"}`}
-    >
-      <span className="px-2 py-0.5 rounded bg-black/40 border border-cyan-300/40 text-[10px] text-cyan-100 font-mono">{k}</span>
-      <span className="text-[11px] text-cyan-100 font-mono tracking-wide">{label}</span>
-    </div>
-  );
-}
-
-function Compass({ pulse, heading }) {
-  const [ring, setRing] = useState(0);
-  useEffect(() => { const id = setInterval(() => setRing((r) => (r + 0.4) % 360), 16); return () => clearInterval(id); }, []);
-  return (
-    <div className="relative grid place-items-center h-44">
-      <div
-        className="absolute w-40 h-40 rounded-full border-2 border-cyan-400/40"
-        style={{ 
-          transform: `rotate(${ring}deg)`, 
-          transition: 'transform 120ms linear', 
-          boxShadow: `0 0 ${30 + pulse*60}px rgba(0,255,255,${0.20 + 0.40*pulse})` 
-        }}
-      />
-      <div
-        className="absolute w-28 h-28 rounded-full border border-fuchsia-500/35"
-        style={{ 
-          transform: `rotate(${-ring*1.15}deg)`, 
-          transition: 'transform 120ms linear', 
-          boxShadow: `0 0 ${25 + pulse*50}px rgba(255,0,255,${0.18 + 0.45*pulse})` 
-        }}
-      />
-      <div className="grid grid-cols-3 gap-1 place-items-center text-[15px] font-mono text-cyan-100 z-10">
-        <span>↖</span><span>↑</span><span>↗</span>
-        <span>←</span><span className="text-cyan-200">⊙</span><span>→</span>
-        <span>↙</span><span>↓</span><span>↘</span>
-      </div>
-    </div>
-  );
-}
-
-function StoryEvent({ heading, firePulse, storyFlash }) {
-  return (
-    <div className={`relative h-40 rounded-xl border border-cyan-300/20 overflow-hidden ${storyFlash ? "ring-2 ring-pink-500/60" : ""}`}>
-      <div className="absolute inset-0 grid place-items-center">
-        <div className="w-24 h-24 rounded-full border-2 border-cyan-300/60 shadow-[0_0_40px_rgba(0,255,255,0.3)]" style={{ transform: `rotate(${heading}deg)`, transition: "transform 300ms ease" }}>
-          <div className="w-full h-full rounded-full bg-gradient-to-br from-cyan-400/30 to-fuchsia-500/30" />
-        </div>
-      </div>
-      <div className="absolute inset-0" style={{ background: `radial-gradient(closest-side, rgba(255,0,120,${firePulse}), transparent)` }} />
-    </div>
-  );
-}
+      // Mount app
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>
